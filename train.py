@@ -1,3 +1,4 @@
+import argparse
 import pandas as pd
 import seaborn as sn
 from sklearn.metrics import confusion_matrix
@@ -201,7 +202,7 @@ def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
         train_ds.get_dataset(),
         validation_data=val_ds.get_dataset(),
         epochs=num_epochs,
-        workers=SESSION_ARGS['NUM_WORKERS'],
+        #workers=SESSION_ARGS['NUM_WORKERS'],
         use_multiprocessing=True,
         callbacks=[model_checkpoint_callback],
     )
@@ -258,13 +259,13 @@ if __name__ == "__main__":
         'NUM_CLASSES': 10,
         'MODEL_PATH': None,
         'BATCH_SIZE': 2**7,
-        'NUM_WORKERS': 10,
+        #'NUM_WORKERS': 10,
         'EPOCHS_REAL': 40,
         'EPOCHS_SYNTH': 15,
         'VGG_MODEL': None,
         'DROPOUT': 0.5,
         'IMG_SIZE': (224, 224),
-        'TRAIN_TYPE': 'hybrid', # hybrid or REAL or SYNTH
+        'TRAIN_TYPE': 'hybrid', # hybrid or real or synth 
         'TRAIN_DIR_REAL' : './images/real/train/',
         'VAL_DIR_REAL' : './images/real/val/',
         'TEST_DIR_REAL' : './images/test/',
@@ -283,42 +284,31 @@ if __name__ == "__main__":
     MODEL_PATH = MODEL_PATH.replace('-', '_')
     SESSION_ARGS['MODEL_PATH'] = MODEL_PATH
 
-    nargs = len(sys.argv) - 1
+    parser = argparse.ArgumentParser(description='Train VGG models.')
+    parser.add_argument('--MODEL_PATH', type=str, help='The path where the model results will be saved')
+    parser.add_argument('--BATCH_SIZE', type=int, help='The batch size')
+    parser.add_argument('--EPOCHS_REAL', type=int, help='The number of epochs executed for training the model on real data.')
+    parser.add_argument('--EPOCHS_SYNTH', type=int, help='The number of epochs executed for training the model on synthetic data.')
+    parser.add_argument('--VGG_MODEL', type=str, help='The type of the model vgg model, currently available models are ' + str(VGG_DICT.keys()) + '.')
+    parser.add_argument('--DROPOUT', type=float, help='The rate of the dropout layer.')
+    parser.add_argument('--TRAIN_TYPE', type=str, help='The type of training data used for training the VGG model. Available values are synth, real and hybrid. If you use real, the model is only trained on real data. If you use synth, the model is only trained on synth data. If you use hybrid, the model is trained on both real and synthetic data.')
+    parser.add_argument('--TRAIN_DIR_REAL', type=str, help='The directory path of the real images used for training.')
+    parser.add_argument('--TRAIN_DIR_SYNTH', type=str, help='The directory path of the synthetic images used for training.')
+    parser.add_argument('--VAL_DIR_REAL', type=str, help='The directory path of the real images used for validation.')
+    parser.add_argument('--VAL_DIR_SYNTH', type=str, help='The directory path of the synthetic images used for validation.')
+    parser.add_argument('--TEST_DIR_REAL', type=str, help='The directory path of the real images used for testing.')
+    parser.add_argument('--TEST_DIR_SYNTH', type=str, help='The directory path of the synthetic images used for testing.')
+    parser.add_argument('--LEARNING_RATE', type=float, help='The learning rate of the model.')
+    parser.add_argument('--MOMENTUM', type=float, help='The momentum of the model.')
+    parser.add_argument('--L2_PENALTY', type=float, help='The l2 penalty of the model.')
 
-    for arg_idx in range(1, nargs+1):
-        if arg_idx % 2 == 1:
-            arg_type = sys.argv[arg_idx]
-            arg_value = sys.argv[arg_idx + 1]
-
-            if arg_type in [
-                    'EPOCHS_REAL', 
-                    'EPOCHS_SYNTH', 
-                    'BATCH_SIZE', 
-                    'NUM_WORKERS',
-                    ]:
-                SESSION_ARGS[arg_type] = int(arg_value)
-
-            elif arg_type in [
-                    'DROPOUT',
-                    'LEARNING_RATE',
-                    'MOMENTUM',
-                    'L2_PENALTY',
-                    ]:
-                SESSION_ARGS[arg_type] = float(arg_value)
-
-            elif arg_type == 'TRAIN_TYPE':
-                
-                if arg_value in ['hybrid', 'real', 'synth']:
-                    SESSION_ARGS[arg_type] = arg_value
-
-                else:
-                    raise Exception("Unknown TRAIN_TYPE " + arg_value + " only types allowed are hybrid or REAL or SYNTH")
-
-            else:
-                SESSION_ARGS[arg_type] = arg_value
-
-    if SESSION_ARGS['VGG_MODEL'] is None:
-        raise Exception("The VGG model has not been specified. The available types are " + str(list(VGG_DICT.keys())))
+    opt = vars(parser.parse_args())
+    for key in opt.keys():
+        if key in SESSION_ARGS:
+            if opt[key] is not None:
+                SESSION_ARGS[key] = opt[key]
+        else:
+            raise Exception("The key " + key + " does not exists in the SESSION_ARGS!")
 
     os.mkdir(MODEL_PATH)
 
