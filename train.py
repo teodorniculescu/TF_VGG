@@ -1,4 +1,3 @@
-import argparse
 import pandas as pd
 import seaborn as sn
 from sklearn.metrics import confusion_matrix
@@ -6,23 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import tensorflow as tf
-from datetime import datetime
 import sys
-
-vgg11 = [['c', 64], ['mp'], ['c', 128], ['mp'], ['c', 256], ['c', 256], ['mp'], ['c', 512], ['c', 512], ['mp'], ['c', 512], ['c', 512], ['mp'], ]
-vgg13 = [['c', 64], ['c', 64], ['mp'], ['c', 128], ['c', 128], ['mp'], ['c', 256], ['c', 256], ['mp'], ['c', 512], ['c', 512], ['mp'], ['c', 512], ['c', 512], ['mp'], ]
-vgg16 = [['c', 64], ['c', 64], ['mp'], ['c', 128], ['c', 128], ['mp'], ['c', 256], ['c', 256], ['c', 256], ['mp'], ['c', 512], ['c', 512], ['c', 512], ['mp'], ['c', 512], ['c', 512], ['c', 512], ['mp'], ]
-vgg19 = [['c', 64], ['c', 64], ['mp'], ['c', 128], ['c', 128], ['mp'], ['c', 256], ['c', 256], ['c', 256], ['c', 256], ['mp'], ['c', 512], ['c', 512], ['c', 512], ['c', 512], ['mp'], ['c', 512], ['c', 512], ['c', 512], ['c', 512], ['mp'], ]
-
-VGG_DICT = {
-        'vgg11': vgg11, 
-        'vgg13': vgg13, 
-        'vgg16': vgg16, 
-        'vgg19': vgg19, 
-        }
-
-
-
+from helper import *
 
 def print_stdout_and_file(*args):
     print(*args)
@@ -78,102 +62,6 @@ def generate_graph(history, num_epochs, aux_name):
 
     plt.savefig(os.path.join(SESSION_ARGS['MODEL_PATH'], aux_name + "_plot.png"))
 
-class CustomVGG():
-    def __init__(self, model_structure, num_classes=10):
-        self.num_classes = num_classes
-        self.model = self.VGG(model_structure)
-        self.model.compile(
-            optimizer=SESSION_ARGS['OPTIMIZER'],
-            loss=SESSION_ARGS['LOSS'],
-            metrics=SESSION_ARGS['METRICS'],
-            )
-
-    def VGG(self, t):
-        ll = []
-
-        for elem in t:
-
-            if elem[0] == 'c':
-                aux_ll = [
-                    tf.keras.layers.Conv2D(elem[1], 3, padding='same'),
-                    #tf.keras.layers.LeakyReLU(alpha=0.05),
-                    tf.keras.layers.ReLU(),
-                    ]
-
-            elif elem[0] == 'mp':
-                aux_ll = [
-                    tf.keras.layers.MaxPooling2D(strides=(2, 2)),
-                    ]
-
-            else:
-                raise Exception("Unknown layer type")
-
-            ll += aux_ll
-
-        ll += [
-            tf.keras.layers.Flatten(),
-
-            tf.keras.layers.Dense(4096, kernel_regularizer=tf.keras.regularizers.l2(SESSION_ARGS['L2_PENALTY'])),
-            #tf.keras.layers.LeakyReLU(alpha=0.05),
-            tf.keras.layers.ReLU(),
-            tf.keras.layers.Dropout(SESSION_ARGS['DROPOUT']),
-
-            tf.keras.layers.Dense(4096, kernel_regularizer=tf.keras.regularizers.l2(SESSION_ARGS['L2_PENALTY'])),
-            #tf.keras.layers.LeakyReLU(alpha=0.05),
-            tf.keras.layers.ReLU(),
-            tf.keras.layers.Dropout(SESSION_ARGS['DROPOUT']),
-
-            tf.keras.layers.Dense(1000),
-            #tf.keras.layers.LeakyReLU(alpha=0.05),
-            tf.keras.layers.ReLU(),
-
-            tf.keras.layers.Dense(self.num_classes),
-
-            tf.keras.layers.Softmax(),
-            ]
-
-        return tf.keras.Sequential(ll)
-
-class CustomDataloader():
-    def __init__(self, data_dir, batch_size=1, img_size=(224, 224)):
-        AUTOTUNE = tf.data.AUTOTUNE
-        self.img_height = img_size[0]
-        self.img_width = img_size[1]
-        self.class_names = os.listdir(data_dir)
-        self.class_names.sort()
-        self.list_ds = tf.data.Dataset.list_files(os.path.join(data_dir, "*", "*.*"))
-        self.list_ds = self.list_ds.map(self.process_path, num_parallel_calls=AUTOTUNE)
-        self.list_ds = self.list_ds.cache()
-        self.list_ds = self.list_ds.shuffle(buffer_size=1000)
-        self.list_ds = self.list_ds.batch(batch_size)
-        self.list_ds = self.list_ds.prefetch(buffer_size=AUTOTUNE)
-
-    def get_dataset(self):
-        return self.list_ds
-
-    def get_label(self, file_path):
-        # convert the path to a list of path components
-        parts = tf.strings.split(file_path, os.path.sep)
-        # The second to last is the class-directory
-        one_hot = parts[-2] == self.class_names
-        # Integer encode the label
-        result = tf.argmax(one_hot)
-        return result
-
-
-    def decode_img(self, img):
-        # convert the compressed string to a 3D uint8 tensor
-        img = tf.io.decode_jpeg(img, channels=3)
-        # resize the image to the desired size
-        return tf.image.resize(img, [self.img_height, self.img_width])
-
-
-    def process_path(self, file_path):
-        label = self.get_label(file_path)
-        img = tf.io.read_file(file_path)
-        img = self.decode_img(img)
-        return img, label
-
 def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
     train_dir = './images/real/train/'
     val_dir = './images/real/val/'
@@ -195,7 +83,7 @@ def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
 
     model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_filepath,
-        save_weights_only=True,
+        save_weights_only=False,
         monitor='val_accuracy',
         mode='max',
         save_best_only=True)
@@ -209,12 +97,17 @@ def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
         callbacks=[model_checkpoint_callback],
     )
 
-    model.load_weights(checkpoint_filepath)
+    model = tf.keras.models.load_model(checkpoint_filepath)
 
-    model.save_weights(os.path.join(SESSION_ARGS['MODEL_PATH'], "model_" + aux_write + ".h5"))
+    model.save(os.path.join(SESSION_ARGS['MODEL_PATH'], "model_" + aux_write + ".h5"))
 
     generate_graph(history_synth, num_epochs, aux_write)
-    generate_confusion_matrix(model, test_ds.get_dataset(), aux_write, train_ds.class_names)
+
+    generate_confusion_matrix(model, test_ds.get_dataset(), aux_write + "_test", train_ds.class_names)
+    trds = CustomDataloader(SESSION_ARGS['TRAIN_DIR_REAL']).get_dataset()
+    generate_confusion_matrix(model, trds, aux_write + "_train", train_ds.class_names)
+    vds = CustomDataloader(SESSION_ARGS['VAL_DIR_REAL']).get_dataset()
+    generate_confusion_matrix(model, vds, aux_write + "_val", train_ds.class_names)
 
     return model
 
@@ -222,10 +115,12 @@ def main():
     if not os.path.exists(SESSION_ARGS['MODEL_PATH']):
         os.mkdir(SESSION_ARGS['MODEL_PATH'])
 
+    print_stdout_and_file('The executed command is: ' + " ".join(sys.argv))
+
     for key, value in SESSION_ARGS.items():
         print_stdout_and_file(key, ' : ', value)
 
-    model = CustomVGG(model_structure=VGG_DICT[SESSION_ARGS['VGG_MODEL']], num_classes=SESSION_ARGS['NUM_CLASSES']).model
+    model = CustomVGG(model_structure=VGG_DICT[SESSION_ARGS['VGG_MODEL']], num_classes=SESSION_ARGS['NUM_CLASSES'], optimizer=SESSION_ARGS['OPTIMIZER'], loss=SESSION_ARGS['LOSS'], metrics=SESSION_ARGS['METRICS'], l2_penalty=SESSION_ARGS['L2_PENALTY'], dropout=SESSION_ARGS['DROPOUT'], input_shape=SESSION_ARGS['IMG_SIZE']).model
 
     if SESSION_ARGS['TRAIN_TYPE'] in ['hybrid', 'synth']:
         run(
@@ -263,80 +158,7 @@ def main():
 
 
 if __name__ == "__main__":
-    SESSION_ARGS = {
-        'NUM_CLASSES': 10,
-        'MODEL_PATH': None,
-        'BATCH_SIZE': 2**7,
-        #'NUM_WORKERS': 10,
-        'EPOCHS_REAL': 40,
-        'EPOCHS_SYNTH': 15,
-        'VGG_MODEL': None,
-        'DROPOUT': 0.5,
-        'IMG_SIZE': (224, 224),
-        'TRAIN_TYPE': 'hybrid', # hybrid or real or synth 
-        'TRAIN_DIR_REAL' : './images/real/train/',
-        'VAL_DIR_REAL' : './images/real/val/',
-        'TEST_DIR_REAL' : './images/test/',
-        'TRAIN_DIR_SYNTH' : './images/synth/train/',
-        'VAL_DIR_SYNTH' : './images/synth/val/',
-        'TEST_DIR_SYNTH' : './images/test/',
-        'LEARNING_RATE' : 10**-2,
-        'MOMENTUM': 0.9,
-        'L2_PENALTY': 5*10**-4,
-        'METRICS': [
-            'accuracy',
-            #tf.keras.metrics.Accuracy(),
-            #tf.keras.metrics.Precision(name='precision'),
-            #tf.keras.metrics.Recall(name='recall'),
-            ],
-        'LOSS': tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        'OPTIMIZER': None,
-    }
-
-    # Initialize argparse
-
-    parser = argparse.ArgumentParser(description='Train VGG models.')
-    parser.add_argument('--MODEL_PATH', type=str, help='The path where the model results will be saved')
-    parser.add_argument('--BATCH_SIZE', type=int, help='The batch size')
-    parser.add_argument('--EPOCHS_REAL', type=int, help='The number of epochs executed for training the model on real data.')
-    parser.add_argument('--EPOCHS_SYNTH', type=int, help='The number of epochs executed for training the model on synthetic data.')
-    parser.add_argument('--VGG_MODEL', type=str, help='The type of the model vgg model, currently available models are ' + str(VGG_DICT.keys()) + '.')
-    parser.add_argument('--DROPOUT', type=float, help='The rate of the dropout layer.')
-    parser.add_argument('--TRAIN_TYPE', type=str, help='The type of training data used for training the VGG model. Available values are synth, real and hybrid. If you use real, the model is only trained on real data. If you use synth, the model is only trained on synth data. If you use hybrid, the model is trained on both real and synthetic data.')
-    parser.add_argument('--TRAIN_DIR_REAL', type=str, help='The directory path of the real images used for training.')
-    parser.add_argument('--TRAIN_DIR_SYNTH', type=str, help='The directory path of the synthetic images used for training.')
-    parser.add_argument('--VAL_DIR_REAL', type=str, help='The directory path of the real images used for validation.')
-    parser.add_argument('--VAL_DIR_SYNTH', type=str, help='The directory path of the synthetic images used for validation.')
-    parser.add_argument('--TEST_DIR_REAL', type=str, help='The directory path of the real images used for testing.')
-    parser.add_argument('--TEST_DIR_SYNTH', type=str, help='The directory path of the synthetic images used for testing.')
-    parser.add_argument('--LEARNING_RATE', type=float, help='The learning rate of the model.')
-    parser.add_argument('--MOMENTUM', type=float, help='The momentum of the model.')
-    parser.add_argument('--L2_PENALTY', type=float, help='The l2 penalty of the model.')
-
-    # Get values from argparse and put them in the SESSION ARGUMENTS
-
-    opt = vars(parser.parse_args())
-    for key in opt.keys():
-        if key in SESSION_ARGS:
-            if opt[key] is not None:
-                SESSION_ARGS[key] = opt[key]
-        else:
-            raise Exception("The key " + key + " does not exists in the SESSION_ARGS!")
-
-    # Initialize anything that was left as 'None'
-
-    if SESSION_ARGS['MODEL_PATH'] is not None:
-        MODEL_PATH = 'MODEL_' + f"{datetime.now()}"
-        MODEL_PATH = MODEL_PATH.replace(' ', '_')
-        MODEL_PATH = MODEL_PATH.replace(':', '_')
-        MODEL_PATH = MODEL_PATH.replace('.', '_')
-        MODEL_PATH = MODEL_PATH.replace('-', '_')
-        SESSION_ARGS['MODEL_PATH'] = MODEL_PATH
-
-
-    # SESSION ARGUMENTS that require other SESSION ARGUMENTS in order to be initialized.
-
-    SESSION_ARGS['OPTIMIZER'] = tf.keras.optimizers.SGD(learning_rate=SESSION_ARGS['LEARNING_RATE'], momentum=SESSION_ARGS['MOMENTUM'], nesterov=False, name='SGD')
+    SESSION_ARGS = get_session_args()
 
     # Start main execution
 
