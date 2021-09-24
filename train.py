@@ -27,7 +27,7 @@ VGG_DICT = {
 def print_stdout_and_file(*args):
     print(*args)
     orig_stdout = sys.stdout
-    f = open(os.path.join(MODEL_PATH, 'log.txt'), 'a')
+    f = open(os.path.join(SESSION_ARGS['MODEL_PATH'], 'log.txt'), 'a')
     sys.stdout = f
 
     print(*args)
@@ -53,7 +53,7 @@ def generate_confusion_matrix(model, ds, aux_name, classes):
     plt.figure(figsize = (10,7))
     cfm_plot = sn.heatmap(df_cfm, annot=True)
     cfm_plot.figure.tight_layout()
-    cfm_plot.figure.savefig(os.path.join(MODEL_PATH, aux_name + "_confusionmatrix.png"))
+    cfm_plot.figure.savefig(os.path.join(SESSION_ARGS['MODEL_PATH'], aux_name + "_confusionmatrix.png"))
 
 def generate_graph(history, num_epochs, aux_name):
     print_stdout_and_file("generating graph")
@@ -67,6 +67,8 @@ def generate_graph(history, num_epochs, aux_name):
         plt.legend(loc='best')
         plt.title('Training and Validation ' + label)
 
+    print(history.history)
+
     epochs_range = list(range(num_epochs))
 
     plt.figure(figsize=(8, 8))
@@ -74,16 +76,16 @@ def generate_graph(history, num_epochs, aux_name):
     add_graph_line('accuracy', 2, 1, 1)
     add_graph_line('loss', 2, 1, 2)
 
-    plt.savefig(os.path.join(MODEL_PATH, aux_name + "_plot.png"))
+    plt.savefig(os.path.join(SESSION_ARGS['MODEL_PATH'], aux_name + "_plot.png"))
 
 class CustomVGG():
     def __init__(self, model_structure, num_classes=10):
         self.num_classes = num_classes
         self.model = self.VGG(model_structure)
         self.model.compile(
-            optimizer=sgd,
-            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-            metrics=['accuracy']
+            optimizer=SESSION_ARGS['OPTIMIZER'],
+            loss=SESSION_ARGS['LOSS'],
+            metrics=SESSION_ARGS['METRICS'],
             )
 
     def VGG(self, t):
@@ -209,7 +211,7 @@ def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
 
     model.load_weights(checkpoint_filepath)
 
-    model.save_weights(os.path.join(MODEL_PATH, "model_" + aux_write + ".h5"))
+    model.save_weights(os.path.join(SESSION_ARGS['MODEL_PATH'], "model_" + aux_write + ".h5"))
 
     generate_graph(history_synth, num_epochs, aux_write)
     generate_confusion_matrix(model, test_ds.get_dataset(), aux_write, train_ds.class_names)
@@ -217,6 +219,12 @@ def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
     return model
 
 def main():
+    if not os.path.exists(SESSION_ARGS['MODEL_PATH']):
+        os.mkdir(SESSION_ARGS['MODEL_PATH'])
+
+    for key, value in SESSION_ARGS.items():
+        print_stdout_and_file(key, ' : ', value)
+
     model = CustomVGG(model_structure=VGG_DICT[SESSION_ARGS['VGG_MODEL']], num_classes=SESSION_ARGS['NUM_CLASSES']).model
 
     if SESSION_ARGS['TRAIN_TYPE'] in ['hybrid', 'synth']:
@@ -239,9 +247,9 @@ def main():
             ])
 
         model.compile(
-            optimizer=sgd,
-            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-            metrics=['accuracy']
+            optimizer=SESSION_ARGS['OPTIMIZER'],
+            loss=SESSION_ARGS['LOSS'],
+            metrics=SESSION_ARGS['METRICS'],
             )
 
         run(
@@ -275,14 +283,17 @@ if __name__ == "__main__":
         'LEARNING_RATE' : 10**-2,
         'MOMENTUM': 0.9,
         'L2_PENALTY': 5*10**-4,
+        'METRICS': [
+            'accuracy',
+            #tf.keras.metrics.Accuracy(),
+            #tf.keras.metrics.Precision(name='precision'),
+            #tf.keras.metrics.Recall(name='recall'),
+            ],
+        'LOSS': tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        'OPTIMIZER': None,
     }
 
-    MODEL_PATH = 'MODEL_' + f"{datetime.now()}"
-    MODEL_PATH = MODEL_PATH.replace(' ', '_')
-    MODEL_PATH = MODEL_PATH.replace(':', '_')
-    MODEL_PATH = MODEL_PATH.replace('.', '_')
-    MODEL_PATH = MODEL_PATH.replace('-', '_')
-    SESSION_ARGS['MODEL_PATH'] = MODEL_PATH
+    # Initialize argparse
 
     parser = argparse.ArgumentParser(description='Train VGG models.')
     parser.add_argument('--MODEL_PATH', type=str, help='The path where the model results will be saved')
@@ -302,6 +313,8 @@ if __name__ == "__main__":
     parser.add_argument('--MOMENTUM', type=float, help='The momentum of the model.')
     parser.add_argument('--L2_PENALTY', type=float, help='The l2 penalty of the model.')
 
+    # Get values from argparse and put them in the SESSION ARGUMENTS
+
     opt = vars(parser.parse_args())
     for key in opt.keys():
         if key in SESSION_ARGS:
@@ -310,11 +323,21 @@ if __name__ == "__main__":
         else:
             raise Exception("The key " + key + " does not exists in the SESSION_ARGS!")
 
-    os.mkdir(MODEL_PATH)
+    # Initialize anything that was left as 'None'
 
-    for key, value in SESSION_ARGS.items():
-        print_stdout_and_file(key, ' : ', value)
+    if SESSION_ARGS['MODEL_PATH'] is not None:
+        MODEL_PATH = 'MODEL_' + f"{datetime.now()}"
+        MODEL_PATH = MODEL_PATH.replace(' ', '_')
+        MODEL_PATH = MODEL_PATH.replace(':', '_')
+        MODEL_PATH = MODEL_PATH.replace('.', '_')
+        MODEL_PATH = MODEL_PATH.replace('-', '_')
+        SESSION_ARGS['MODEL_PATH'] = MODEL_PATH
 
-    sgd = tf.keras.optimizers.SGD(learning_rate=SESSION_ARGS['LEARNING_RATE'], momentum=SESSION_ARGS['MOMENTUM'], nesterov=False, name='SGD')
+
+    # SESSION ARGUMENTS that require other SESSION ARGUMENTS in order to be initialized.
+
+    SESSION_ARGS['OPTIMIZER'] = tf.keras.optimizers.SGD(learning_rate=SESSION_ARGS['LEARNING_RATE'], momentum=SESSION_ARGS['MOMENTUM'], nesterov=False, name='SGD')
+
+    # Start main execution
 
     main()
