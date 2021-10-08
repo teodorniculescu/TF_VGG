@@ -1,4 +1,5 @@
 import pandas as pd
+from tqdm import tqdm
 import seaborn as sn
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
@@ -24,11 +25,13 @@ def generate_confusion_matrix(model, ds, aux_name, classes):
     y_true = []
     y_pred = []
     print_stdout_and_file("generating confusion matrix")
-    X_train = list(map(lambda x: x[0], ds))
-    y_train = list(map(lambda x: x[1], ds))
-    for idx in range(len(X_train)):
-        X = X_train[idx]
-        y = y_train[idx].numpy()[0]
+    X_train = ds[0]
+    y_train = ds[1]
+    ims = SESSION_ARGS['IMG_SIZE']
+    aux_shape = (-1, ims[0], ims[1], ims[2])
+    for idx in tqdm(range(len(X_train))):
+        X = X_train[idx].reshape(aux_shape)
+        y = y_train[idx]
         p = np.argmax(np.array(model.predict(X)[0]))
         y_true.append(y)
         y_pred.append(p)
@@ -67,8 +70,8 @@ def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
     val_dir = './images/real/val/'
     test_dir = './images/test/'
 
-    train_ds =  CustomDataloader(train_dir, batch_size=SESSION_ARGS['BATCH_SIZE'])
-    val_ds = CustomDataloader(val_dir, batch_size=SESSION_ARGS['BATCH_SIZE'])
+    train_ds =  CustomDataloader(train_dir)
+    val_ds = CustomDataloader(val_dir)
     test_ds = CustomDataloader(test_dir)
 
     if not (train_ds.class_names == 
@@ -79,33 +82,39 @@ def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
         str(val_ds.class_names) + 
         str(train_ds.class_names))
 
-    checkpoint_filepath = '/tmp/checkpoint'
+    checkpoint_filepath = os.path.join(SESSION_ARGS['MODEL_PATH'], "model_" + aux_write)
 
     model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_filepath,
         save_weights_only=False,
         monitor='val_accuracy',
         mode='max',
-        save_best_only=True)
+        save_best_only=True,
+        verbose=1)
 
     history_synth = model.fit(
-        train_ds.get_dataset(),
+        train_ds.get_dataset()[0],
+        train_ds.get_dataset()[1],
         validation_data=val_ds.get_dataset(),
         epochs=num_epochs,
+        shuffle=True,
+        batch_size=SESSION_ARGS['BATCH_SIZE'],
         #workers=SESSION_ARGS['NUM_WORKERS'],
         use_multiprocessing=True,
         callbacks=[model_checkpoint_callback],
     )
 
-    model = tf.keras.models.load_model(checkpoint_filepath)
-
-    model.save(os.path.join(SESSION_ARGS['MODEL_PATH'], "model_" + aux_write + ".h5"))
+    model = tf.keras.models.load_model(checkpoint_filepath, compile=True)
 
     generate_graph(history_synth, num_epochs, aux_write)
 
     generate_confusion_matrix(model, test_ds.get_dataset(), aux_write + "_test", train_ds.class_names)
     trds = CustomDataloader(SESSION_ARGS['TRAIN_DIR_REAL']).get_dataset()
-    generate_confusion_matrix(model, trds, aux_write + "_train", train_ds.class_names)
+    generate_confusion_matrix(model, trds, aux_write + "_train1", train_ds.class_names)
+    trds = CustomDataloader(SESSION_ARGS['TRAIN_DIR_REAL']).get_dataset()
+    generate_confusion_matrix(model, trds, aux_write + "_train2", train_ds.class_names)
+    trds = CustomDataloader(SESSION_ARGS['TRAIN_DIR_REAL']).get_dataset()
+    generate_confusion_matrix(model, trds, aux_write + "_train3", train_ds.class_names)
     vds = CustomDataloader(SESSION_ARGS['VAL_DIR_REAL']).get_dataset()
     generate_confusion_matrix(model, vds, aux_write + "_val", train_ds.class_names)
 
@@ -133,20 +142,6 @@ def main():
         )
 
     if SESSION_ARGS['TRAIN_TYPE'] in ['hybrid', 'real']:
-        model = tf.keras.Sequential([
-            tf.keras.layers.experimental.preprocessing.RandomFlip("horizontal"),
-            tf.keras.layers.experimental.preprocessing.RandomFlip("vertical"),
-            tf.keras.layers.experimental.preprocessing.RandomRotation(factor=0.4, fill_mode='reflect'),
-            tf.keras.layers.experimental.preprocessing.RandomContrast(factor=0.2),
-            model,
-            ])
-
-        model.compile(
-            optimizer=SESSION_ARGS['OPTIMIZER'],
-            loss=SESSION_ARGS['LOSS'],
-            metrics=SESSION_ARGS['METRICS'],
-            )
-
         run(
             model,        
             SESSION_ARGS['TRAIN_DIR_REAL'],
