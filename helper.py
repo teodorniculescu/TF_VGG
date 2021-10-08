@@ -23,8 +23,8 @@ def get_session_args(args=None):
         'MODEL_PATH': None,
         'BATCH_SIZE': 2**7,
         #'NUM_WORKERS': 10,
-        'EPOCHS_REAL': 40,
-        'EPOCHS_SYNTH': 15,
+        'EPOCHS_REAL': 60,
+        'EPOCHS_SYNTH': 20,
         'VGG_MODEL': None,
         'DROPOUT': 0.5,
         'IMG_SIZE': (224, 224, 3),
@@ -46,6 +46,7 @@ def get_session_args(args=None):
             ],
         'LOSS': 'sparse_categorical_crossentropy',
         'OPTIMIZER': None,
+        'USE_AUGMENTATION_REAL': True
     }
 
     # Initialize argparse
@@ -67,6 +68,7 @@ def get_session_args(args=None):
     parser.add_argument('--LEARNING_RATE', type=float, help='The learning rate of the model.')
     parser.add_argument('--MOMENTUM', type=float, help='The momentum of the model.')
     parser.add_argument('--L2_PENALTY', type=float, help='The l2 penalty of the model.')
+    parser.add_argument('--USE_AUGMENTATION_REAL', type=bool, help='Whether to augment the real data or not, by default it is set to True')
 
     # Get values from argparse and put them in the SESSION ARGUMENTS
     if args is None:
@@ -164,12 +166,14 @@ class CustomVGG():
         return tf.keras.Sequential(ll)
 
 class CustomDataloader():
-    def __init__(self, data_dir, img_size=(224, 224)):
+    def __init__(self, data_dir, img_size=(224, 224), augment=False):
+        print(data_dir, "-" * 1000)
         AUTOTUNE = tf.data.AUTOTUNE
         self.img_height = img_size[0]
         self.img_width = img_size[1]
         self.class_names = os.listdir(data_dir)
         self.class_names.sort()
+        self.augment = augment
         images_list = []
         labels_list = []
         
@@ -184,7 +188,16 @@ class CustomDataloader():
     def get_dataset(self):
         return self.list_ds
 
+    def random_flip(self, img, flip_type, prob=0.5):
+        # 1 horizontal 0 vertical
+        if np.random.uniform() <= prob:
+            return cv2.flip(img, flip_type)
+        return img
+
     def process_path(self, file_path):
         img = cv2.imread(file_path)
+        if self.augment:
+            img = self.random_flip(img, 1)
+            img = self.random_flip(img, 0)
         img = cv2.resize(img, (self.img_width, self.img_height))
         return img
