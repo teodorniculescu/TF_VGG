@@ -1,7 +1,7 @@
 import pandas as pd
 from tqdm import tqdm
 import seaborn as sn
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -24,7 +24,7 @@ def generate_confusion_matrix(model, ds, aux_name, classes):
     num_classes = len(classes)
     y_true = []
     y_pred = []
-    print_stdout_and_file("generating confusion matrix")
+    print_stdout_and_file("generating confusion matrix and other stats for " + aux_name)
     X_train = ds[0]
     y_train = ds[1]
     ims = SESSION_ARGS['IMG_SIZE']
@@ -41,6 +41,7 @@ def generate_confusion_matrix(model, ds, aux_name, classes):
     cfm_plot = sn.heatmap(df_cfm, annot=True)
     cfm_plot.figure.tight_layout()
     cfm_plot.figure.savefig(os.path.join(SESSION_ARGS['MODEL_PATH'], aux_name + "_confusionmatrix.png"))
+    print_stdout_and_file(str(classification_report(y_true, y_pred, target_names=classes)))
 
 def generate_graph(history, num_epochs, aux_name):
     print_stdout_and_file("generating graph")
@@ -65,12 +66,8 @@ def generate_graph(history, num_epochs, aux_name):
 
     plt.savefig(os.path.join(SESSION_ARGS['MODEL_PATH'], aux_name + "_plot.png"))
 
-def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
-    train_dir = './images/real/train/'
-    val_dir = './images/real/val/'
-    test_dir = './images/test/'
-
-    train_ds =  CustomDataloader(train_dir)
+def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs, augment_train_data=False):
+    train_ds =  CustomDataloader(train_dir, augment=augment_train_data)
     val_ds = CustomDataloader(val_dir)
     test_ds = CustomDataloader(test_dir)
 
@@ -109,14 +106,10 @@ def run(model, train_dir, val_dir, test_dir, aux_write, num_epochs):
     generate_graph(history_synth, num_epochs, aux_write)
 
     generate_confusion_matrix(model, test_ds.get_dataset(), aux_write + "_test", train_ds.class_names)
-    trds = CustomDataloader(SESSION_ARGS['TRAIN_DIR_REAL']).get_dataset()
-    generate_confusion_matrix(model, trds, aux_write + "_train1", train_ds.class_names)
-    trds = CustomDataloader(SESSION_ARGS['TRAIN_DIR_REAL']).get_dataset()
-    generate_confusion_matrix(model, trds, aux_write + "_train2", train_ds.class_names)
-    trds = CustomDataloader(SESSION_ARGS['TRAIN_DIR_REAL']).get_dataset()
-    generate_confusion_matrix(model, trds, aux_write + "_train3", train_ds.class_names)
-    vds = CustomDataloader(SESSION_ARGS['VAL_DIR_REAL']).get_dataset()
-    generate_confusion_matrix(model, vds, aux_write + "_val", train_ds.class_names)
+    #trds = CustomDataloader(SESSION_ARGS['TRAIN_DIR_REAL']).get_dataset()
+    #generate_confusion_matrix(model, trds, aux_write + "_train", train_ds.class_names)
+    #vds = CustomDataloader(SESSION_ARGS['VAL_DIR_REAL']).get_dataset()
+    #generate_confusion_matrix(model, vds, aux_write + "_val", train_ds.class_names)
 
     return model
 
@@ -132,13 +125,14 @@ def main():
     model = CustomVGG(model_structure=VGG_DICT[SESSION_ARGS['VGG_MODEL']], num_classes=SESSION_ARGS['NUM_CLASSES'], optimizer=SESSION_ARGS['OPTIMIZER'], loss=SESSION_ARGS['LOSS'], metrics=SESSION_ARGS['METRICS'], l2_penalty=SESSION_ARGS['L2_PENALTY'], dropout=SESSION_ARGS['DROPOUT'], input_shape=SESSION_ARGS['IMG_SIZE']).model
 
     if SESSION_ARGS['TRAIN_TYPE'] in ['hybrid', 'synth']:
-        run(
+        model = run(
             model,        
             SESSION_ARGS['TRAIN_DIR_SYNTH'],
             SESSION_ARGS['VAL_DIR_SYNTH'],
             SESSION_ARGS['TEST_DIR_SYNTH'],
             'synth',
-            SESSION_ARGS['EPOCHS_SYNTH']
+            SESSION_ARGS['EPOCHS_SYNTH'],
+            False,
         )
 
     if SESSION_ARGS['TRAIN_TYPE'] in ['hybrid', 'real']:
@@ -148,7 +142,8 @@ def main():
             SESSION_ARGS['VAL_DIR_REAL'],
             SESSION_ARGS['TEST_DIR_REAL'],
             'real',
-            SESSION_ARGS['EPOCHS_REAL']
+            SESSION_ARGS['EPOCHS_REAL'],
+            SESSION_ARGS['USE_AUGMENTATION_REAL'],
         )
 
 
