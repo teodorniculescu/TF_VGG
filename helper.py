@@ -1,4 +1,5 @@
 import tensorflow as tf
+import cv2
 import argparse
 from datetime import datetime
 import numpy as np
@@ -163,41 +164,27 @@ class CustomVGG():
         return tf.keras.Sequential(ll)
 
 class CustomDataloader():
-    def __init__(self, data_dir, batch_size=1, img_size=(224, 224)):
+    def __init__(self, data_dir, img_size=(224, 224)):
         AUTOTUNE = tf.data.AUTOTUNE
         self.img_height = img_size[0]
         self.img_width = img_size[1]
         self.class_names = os.listdir(data_dir)
         self.class_names.sort()
-        self.list_ds = tf.data.Dataset.list_files(os.path.join(data_dir, "*", "*.*"))
-        self.list_ds = self.list_ds.map(self.process_path, num_parallel_calls=AUTOTUNE)
-        self.list_ds = self.list_ds.cache()
-        self.list_ds = self.list_ds.shuffle(buffer_size=1000)
-        self.list_ds = self.list_ds.batch(batch_size)
-        self.list_ds = self.list_ds.prefetch(buffer_size=AUTOTUNE)
+        images_list = []
+        labels_list = []
+        
+        for idx, cls in enumerate(self.class_names):
+            for image_name in os.listdir(os.path.join(data_dir, cls)):
+                image_path = os.path.join(data_dir, cls, image_name)
+                images_list.append(self.process_path(image_path))
+                labels_list.append(idx)
+
+        self.list_ds = (np.array(images_list), np.array(labels_list))
 
     def get_dataset(self):
         return self.list_ds
 
-    def get_label(self, file_path):
-        # convert the path to a list of path components
-        parts = tf.strings.split(file_path, os.path.sep)
-        # The second to last is the class-directory
-        one_hot = parts[-2] == self.class_names
-        # Integer encode the label
-        result = tf.argmax(one_hot)
-        return result
-
-
-    def decode_img(self, img):
-        # convert the compressed string to a 3D uint8 tensor
-        img = tf.io.decode_jpeg(img, channels=3)
-        # resize the image to the desired size
-        return tf.image.resize(img, [self.img_height, self.img_width])
-
-
     def process_path(self, file_path):
-        label = self.get_label(file_path)
-        img = tf.io.read_file(file_path)
-        img = self.decode_img(img)
-        return img, label
+        img = cv2.imread(file_path)
+        img = cv2.resize(img, (self.img_width, self.img_height))
+        return img
